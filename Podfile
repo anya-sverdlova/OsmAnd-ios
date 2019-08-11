@@ -2,7 +2,7 @@ source "https://github.com/CocoaPods/Specs.git"
 
 platform :ios, '9.3'
 
-xcodeproj 'OsmAnd'
+project   'OsmAnd'
 workspace 'OsmAnd'
 
 def defaultPods

@@ -26,6 +26,11 @@
 
 @interface OAAdvancedEditingViewController () <UITextViewDelegate, MDCMultilineTextInputLayoutDelegate>
 
+@property (strong, nonatomic) IBOutlet UIView *toolbarView;
+@property (strong, nonatomic) IBOutlet UIScrollView *scrollView;
+
+@property (weak) UITextView *tagTextView;
+
 @end
 
 @implementation OAAdvancedEditingViewController
@@ -269,6 +274,7 @@
 
 -(void)textViewDidChange:(UITextView *)textView
 {
+
     NSIndexPath *indexPath = [self indexPathForCellContainingView:textView inTableView:self.tableView];
     if (indexPath.section < _fieldPairs.count)
     {
@@ -290,6 +296,13 @@
                                                     hint:tagCellInfo[@"hint"] value:textView.text image:@"ic_custom_delete"],
                                      valueCellInfo
                                      ] atIndexedSubscript:indexPath.section];
+
+            if (self.tagTextView == nil)
+                self.tagTextView = textView;
+
+            [self toggleTagToolbar];
+
+            [self createTagHintsSetIfNeededWith: textView.text];
         }
         else
         {
@@ -381,6 +394,8 @@
                                            [self getDictionary:tagCellInfo[@"type"] hint:tagCellInfo[@"hint"] value:nil image:@"ic_custom_delete"],
                                            valueInfo
                                            ];
+
+        [self hideTagToolbar];
     }
     else
     {
@@ -415,5 +430,103 @@
     [self.tableView endUpdates];
     [self.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:sectionNumber + 1] atScrollPosition:UITableViewScrollPositionBottom animated:YES];
 }
+
+-(void)createTagToolbarFor
+{
+    //need to check for version cause inputAssistantItem only available in iOS9+
+    NSProcessInfo *processInfo = [NSProcessInfo processInfo];
+    NSOperatingSystemVersion iOS9Version = {9, 0, 0};
+
+    if ([processInfo isOperatingSystemAtLeastVersion:iOS9Version])
+    {
+        UITextInputAssistantItem* item = self.tagTextView.inputAssistantItem;
+        item.leadingBarButtonGroups = @[];
+        item.trailingBarButtonGroups = @[];
+        self.tagTextView.inputAccessoryView = self.toolbarView;
+        [self.tagTextView reloadInputViews];
+    }
+}
+
+-(void)toggleTagToolbar
+{
+    if (self.tagTextView.inputAccessoryView == nil)
+        [self createTagToolbarFor];
+    else if ([self.tagTextView.text isEqualToString:@""])
+        [self hideTagToolbar];
+}
+
+-(void)hideTagToolbar
+{
+    self.tagTextView.inputAccessoryView = nil;
+    [self.tagTextView reloadInputViews];
+}
+
+-(void)createTagHintsSetIfNeededWith:(NSString*) tag
+{
+    OAAdvancedEditingViewController* __weak weakSelf = self;
+    dispatch_async(dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(void){
+        NSArray* hints = [_poiData getTranslatedSubTypesMatchingWith:tag];
+        dispatch_async(dispatch_get_main_queue(), ^(void){
+            OAAdvancedEditingViewController* __weak strongSelf = weakSelf;
+            [strongSelf updateTagHints:hints];
+        });
+    });
+}
+
+-(void)updateTagHints:(NSArray *)hints {
+    NSInteger xPosition = 0;
+    NSInteger margin = 8;
+
+    [self.scrollView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+    self.scrollView.contentSize = CGSizeMake(margin, self.toolbarView.frame.size.height);
+
+    if ([hints count] == 0)
+        [self hideTagToolbar];
+    else
+        for ( NSString* hint in hints )
+        {
+            UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(xPosition + margin, 6, 0, 0)];
+            label.backgroundColor = UIColorFromRGB(tag_hint_background_color);
+            label.textAlignment = NSTextAlignmentCenter;
+            label.textColor = UIColorFromRGB(tag_hint_text_color);
+            label.layer.masksToBounds = YES;
+            label.layer.cornerRadius = 4.0;
+            label.numberOfLines = 1;
+            label.text = hint;
+            [label sizeToFit];
+
+            UITapGestureRecognizer* gesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tagHintTapped:)];
+            [label setUserInteractionEnabled: YES];
+            [label addGestureRecognizer: gesture];
+
+            CGRect labelFrame = [label frame];
+            labelFrame.size.width = label.frame.size.width + 15;
+            labelFrame.size.height = 32;
+            [label setFrame:labelFrame];
+
+            xPosition += label.frame.size.width + margin;
+
+            [self.scrollView addSubview:label];
+        }
+    self.scrollView.contentSize = CGSizeMake(xPosition, self.toolbarView.frame.size.height);
+
+    [self.tagTextView reloadInputViews];
+}
+
+-(void)removeFromSuperview:(UITapGestureRecognizer*)sender
+{
+    if ([sender isKindOfClass:[UILabel class]])
+    {
+        UILabel *label = (UILabel *) sender;
+        [label removeFromSuperview];
+    }
+}
+
+-(void)tagHintTapped:(UIGestureRecognizer*)gestureRecognizer
+{
+    self.tagTextView.text = [(UILabel*)gestureRecognizer.view text];
+    [self hideTagToolbar];
+}
+
 
 @end
